@@ -104,7 +104,7 @@ def read_frame(cap):
 
 
 def track_video(data, video_file, visual=False):
-    cap = cv2.VideoCapture('/Users/paulinus/Pictures/GoPro/2015-11-20/ull/GOPR4358.MP4')
+    cap = cv2.VideoCapture(video_file)
 
     MAX_CORNERS = 100
 
