@@ -4,6 +4,7 @@ import os
 from subprocess import Popen, PIPE
 
 import cv2
+import networkx as nx
 import numpy as np
 
 from opensfm import context
@@ -108,6 +109,19 @@ def read_frame(cap, skip_frames=1):
     return frame, gray
 
 
+def add_tracked_points(tracks_graph, frame_name, points, ids, frame):
+    '''Add current frame tracks to track Graph
+    '''
+    for p, track_id in zip(points, ids):
+        x, y = p
+        ix = max(0, min(int(round(x)), frame.shape[1] - 1))
+        iy = max(0, min(int(round(y)), frame.shape[0] - 1))
+        r, g, b = frame[iy, ix]
+        tracks_graph.add_node(frame_name, bipartite=0)
+        tracks_graph.add_node(str(track_id), bipartite=1)
+        tracks_graph.add_edge(frame_name, str(track_id), feature=(x,y), feature_id=track_id, feature_color=(float(r),float(g),float(b)))
+
+
 def track_video(data, video_file, visual=False):
     cap = cv2.VideoCapture(video_file)
 
@@ -130,7 +144,8 @@ def track_video(data, video_file, visual=False):
 
     p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
     ids = np.arange(len(p0)).reshape(-1, 1)
-    print p0.shape, ids.shape
+
+    tracks_graph = nx.Graph()
 
     if visual:
         # Drawing buffers
@@ -141,6 +156,8 @@ def track_video(data, video_file, visual=False):
         frame, frame_gray = read_frame(cap, 1)
         if frame is None:
             break
+        frame_number = int(cap.get(cv2.cv.CV_CAP_PROP_POS_FRAMES))
+        frame_name = '{:08d}.jpg'.format(frame_number)
 
         # calculate optical flow
         p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **lk_params)
@@ -149,6 +166,12 @@ def track_video(data, video_file, visual=False):
         good_new = p1[st==1]
         good_old = p0[st==1]
         good_ids = ids[st==1]
+
+        if frame_number % 10 == 0:
+            path = os.path.join(data.data_path, 'images')
+            io.mkdir_p(path)
+            cv2.imwrite(os.path.join(path, frame_name), frame)
+            add_tracked_points(tracks_graph, frame_name, good_new, good_ids, frame)
 
         # draw the tracks
         if visual:
@@ -171,3 +194,6 @@ def track_video(data, video_file, visual=False):
     if visual:
         cv2.destroyAllWindows()
     cap.release()
+
+    data.save_tracks_graph(tracks_graph)
+
