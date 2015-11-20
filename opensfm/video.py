@@ -10,6 +10,7 @@ import numpy as np
 from opensfm import context
 from opensfm import dataset
 from opensfm import exif
+from opensfm import features
 from opensfm import geo
 from opensfm import geotag_from_gpx
 from opensfm import io
@@ -113,14 +114,17 @@ def read_frame(cap, skip_frames=1):
 def add_tracked_points(tracks_graph, frame_name, points, ids, frame):
     '''Add current frame tracks to track Graph
     '''
+    height, width = frame.shape[:2]
     for p, track_id in zip(points, ids):
         x, y = p
-        ix = max(0, min(int(round(x)), frame.shape[1] - 1))
-        iy = max(0, min(int(round(y)), frame.shape[0] - 1))
+        ix = max(0, min(int(round(x)), width - 1))
+        iy = max(0, min(int(round(y)), height - 1))
+        nx, ny = features.normalized_image_coordinates(p.reshape(1,-1), width, height)[0]
         r, g, b = frame[iy, ix]
         tracks_graph.add_node(frame_name, bipartite=0)
         tracks_graph.add_node(str(track_id), bipartite=1)
-        tracks_graph.add_edge(frame_name, str(track_id), feature=(x,y), feature_id=track_id, feature_color=(float(r),float(g),float(b)))
+        tracks_graph.add_edge(frame_name, str(track_id), feature=(nx,ny),
+            feature_id=track_id, feature_color=(float(r),float(g),float(b)))
 
 
 def track_video(data, video_file, visual=False):
@@ -209,6 +213,9 @@ def track_video(data, video_file, visual=False):
         cv2.destroyAllWindows()
     cap.release()
 
+    # Save tracks
+    data.save_tracks_graph(tracks_graph)
+
     # Create camera models
     calib = (exif.hard_coded_calibration(metadata)
         or exif.focal_ratio_calibration(metadata)
@@ -226,6 +233,6 @@ def track_video(data, video_file, visual=False):
             "k2": calib['k2'],
         }
     }
+    data.save_camera_models(camera_models)
 
-    data.save_tracks_graph(tracks_graph)
 
