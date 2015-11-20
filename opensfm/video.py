@@ -9,6 +9,7 @@ import numpy as np
 
 from opensfm import context
 from opensfm import dataset
+from opensfm import exif
 from opensfm import geo
 from opensfm import geotag_from_gpx
 from opensfm import io
@@ -157,6 +158,7 @@ def track_video(data, video_file, visual=False):
         if frame is None:
             break
         frame_number = int(cap.get(cv2.cv.CV_CAP_PROP_POS_FRAMES))
+        frame_time = int(cap.get(cv2.cv.CV_CAP_PROP_POS_MSEC))
         frame_name = '{:08d}.jpg'.format(frame_number)
 
         # calculate optical flow
@@ -168,9 +170,21 @@ def track_video(data, video_file, visual=False):
         good_ids = ids[st==1]
 
         if frame_number % 10 == 0:
-            path = os.path.join(data.data_path, 'images')
-            io.mkdir_p(path)
-            cv2.imwrite(os.path.join(path, frame_name), frame)
+            image_path = os.path.join(data.data_path, 'images')
+            io.mkdir_p(image_path)
+            cv2.imwrite(os.path.join(image_path, frame_name), frame)
+            metadata = {
+                "width": frame.shape[1],
+                "height": frame.shape[0],
+                "camera": "unknown",
+                "make": "unknown",
+                "model": "unknown",
+                "projection_type": "perspective",
+                "orientation": 1,
+                "focal_ratio": 0.8,
+                "capture_time": frame_time,
+            }
+            data.save_exif(frame_name, metadata)
             add_tracked_points(tracks_graph, frame_name, good_new, good_ids, frame)
 
         # draw the tracks
@@ -194,6 +208,24 @@ def track_video(data, video_file, visual=False):
     if visual:
         cv2.destroyAllWindows()
     cap.release()
+
+    # Create camera models
+    calib = (exif.hard_coded_calibration(metadata)
+        or exif.focal_ratio_calibration(metadata)
+        or exif.default_calibration(data))
+    camera_models = {
+        metadata['camera']: {
+            'width': metadata['width'],
+            'height': metadata['height'],
+            'projection_type': metadata['projection_type'],
+            "focal_prior": calib['focal'],
+            "k1_prior": calib['k1'],
+            "k2_prior": calib['k2'],
+            "focal": calib['focal'],
+            "k1": calib['k1'],
+            "k2": calib['k2'],
+        }
+    }
 
     data.save_tracks_graph(tracks_graph)
 
