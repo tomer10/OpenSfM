@@ -129,6 +129,8 @@ def track_video(data, video_file, visual=False):
     old_frame, old_gray = read_frame(cap, 1)
 
     p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
+    ids = np.arange(len(p0)).reshape(-1, 1)
+    print p0.shape, ids.shape
 
     if visual:
         # Drawing buffers
@@ -146,13 +148,14 @@ def track_video(data, video_file, visual=False):
         # Select good points
         good_new = p1[st==1]
         good_old = p0[st==1]
+        good_ids = ids[st==1]
 
         # draw the tracks
         if visual:
-            for i,(new,old) in enumerate(zip(good_new,good_old)):
+            for new, old, i in zip(good_new, good_old, good_ids):
                 a, b = new.ravel()
                 c, d = old.ravel()
-                cv2.line(mask, (a,b), (c,d), color[i].tolist(), 2)
+                cv2.line(mask, (a,b), (c,d), color[i].tolist(), 1 )
                 cv2.circle(frame, (a,b), 5, color[i].tolist(), -1)
             frame = cv2.add(frame, mask)
 
@@ -163,6 +166,7 @@ def track_video(data, video_file, visual=False):
         # Now update the previous frame and previous points
         old_gray = frame_gray
         p0 = good_new.reshape(-1, 1, 2)
+        ids = good_ids.reshape(-1, 1)
 
     if visual:
         cv2.destroyAllWindows()
