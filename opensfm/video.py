@@ -1,15 +1,17 @@
-import os
-from subprocess import Popen, PIPE
 import datetime
 import dateutil.parser
+import os
+from subprocess import Popen, PIPE
+
 import cv2
-import geotag_from_gpx
-import geo
-import dataset
-import io
-from opensfm import context
+import numpy as np
 
 from opensfm import context
+from opensfm import dataset
+from opensfm import geo
+from opensfm import geotag_from_gpx
+from opensfm import io
+
 
 
 def video_orientation(video_file):
@@ -28,6 +30,7 @@ def video_orientation(video_file):
     else:
         orientation = 1
     return orientation
+
 
 def import_video_with_gpx(video_file, gpx_file, output_path, dx, dt=None, start_time=None, visual=False, image_description=None):
 
@@ -88,3 +91,73 @@ def import_video_with_gpx(video_file, gpx_file, output_path, dx, dt=None, start_
     if visual:
         cv2.destroyAllWindows()
     return image_files
+
+
+def read_frame(cap):
+    ret, frame = cap.read()
+    if ret:
+        frame = cv2.resize(frame, (0,0), frame, 0.5, 0.5)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        return frame, gray
+    else:
+        print('Unable to read frame')
+
+
+def track_video(data, video_file, visual=False):
+    cap = cv2.VideoCapture('/Users/paulinus/Pictures/GoPro/2015-11-20/ull/GOPR4358.MP4')
+
+    MAX_CORNERS = 100
+
+    # params for ShiTomasi corner detection
+    feature_params = dict( maxCorners = MAX_CORNERS,
+                           qualityLevel = 0.1,
+                           minDistance = 7,
+                           blockSize = 7 )
+
+    # Parameters for lucas kanade optical flow
+    lk_params = dict( winSize  = (15,15),
+                      maxLevel = 2,
+                      criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
+
+
+    # Take first frame and find corners in it
+    old_frame, old_gray = read_frame(cap)
+
+    p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
+
+    if visual:
+        # Drawing buffers
+        color = np.random.randint(0, 255, (MAX_CORNERS, 3))
+        mask = np.zeros_like(old_frame)
+
+    while(1):
+        for i in range(4):
+            frame, frame_gray = read_frame(cap)
+
+        # calculate optical flow
+        p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **lk_params)
+
+        # Select good points
+        good_new = p1[st==1]
+        good_old = p0[st==1]
+
+        # draw the tracks
+        if visual:
+            for i,(new,old) in enumerate(zip(good_new,good_old)):
+                a, b = new.ravel()
+                c, d = old.ravel()
+                cv2.line(mask, (a,b), (c,d), color[i].tolist(), 2)
+                cv2.circle(frame, (a,b), 5, color[i].tolist(), -1)
+            frame = cv2.add(frame, mask)
+
+            cv2.imshow('frame', frame)
+            if cv2.waitKey(1) & 0xFF == 27:
+                break
+
+        # Now update the previous frame and previous points
+        old_gray = frame_gray
+        p0 = good_new.reshape(-1, 1, 2)
+
+    if visual:
+        cv2.destroyAllWindows()
+    cap.release()
