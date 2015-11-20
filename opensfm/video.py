@@ -93,14 +93,19 @@ def import_video_with_gpx(video_file, gpx_file, output_path, dx, dt=None, start_
     return image_files
 
 
-def read_frame(cap):
-    ret, frame = cap.read()
-    if ret:
-        frame = cv2.resize(frame, (0,0), frame, 0.5, 0.5)
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        return frame, gray
-    else:
-        print('Unable to read frame')
+def read_frame(cap, skip_frames=1):
+    '''Reads frame from video.
+
+    Returns both color and gray version.
+    Reads skip_frames times and return last read.
+    '''
+    for i in range(skip_frames):
+        ret, frame = cap.read()
+        if not ret:
+            return None, None
+    frame = cv2.resize(frame, (0,0), frame, 0.5, 0.5)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return frame, gray
 
 
 def track_video(data, video_file, visual=False):
@@ -121,7 +126,7 @@ def track_video(data, video_file, visual=False):
 
 
     # Take first frame and find corners in it
-    old_frame, old_gray = read_frame(cap)
+    old_frame, old_gray = read_frame(cap, 1)
 
     p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
 
@@ -131,8 +136,9 @@ def track_video(data, video_file, visual=False):
         mask = np.zeros_like(old_frame)
 
     while(1):
-        for i in range(4):
-            frame, frame_gray = read_frame(cap)
+        frame, frame_gray = read_frame(cap, 1)
+        if frame is None:
+            break
 
         # calculate optical flow
         p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **lk_params)
