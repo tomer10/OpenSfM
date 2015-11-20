@@ -120,7 +120,7 @@ def add_tracked_points(tracks_graph, frame_name, points, ids, frame):
         ix = max(0, min(int(round(x)), width - 1))
         iy = max(0, min(int(round(y)), height - 1))
         nx, ny = features.normalized_image_coordinates(p.reshape(1,-1), width, height)[0]
-        r, g, b = frame[iy, ix]
+        b, g, r = frame[iy, ix]
         tracks_graph.add_node(frame_name, bipartite=0)
         tracks_graph.add_node(str(track_id), bipartite=1)
         tracks_graph.add_edge(frame_name, str(track_id), feature=(nx,ny),
@@ -130,7 +130,7 @@ def add_tracked_points(tracks_graph, frame_name, points, ids, frame):
 def track_video(data, video_file, visual=False):
     cap = cv2.VideoCapture(video_file)
 
-    MAX_CORNERS = 100
+    MAX_CORNERS = 1000
 
     # params for ShiTomasi corner detection
     feature_params = dict( maxCorners = MAX_CORNERS,
