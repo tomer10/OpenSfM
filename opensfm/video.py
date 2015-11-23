@@ -209,6 +209,23 @@ def track_video(data, video_file, visual=False):
         p0 = good_new.reshape(-1, 1, 2)
         ids = good_ids.reshape(-1, 1)
 
+        # Add corners in empty regions
+        bin_size = 20
+        occupied = np.zeros((frame.shape[0] / bin_size + 1, frame.shape[1] / bin_size + 1), dtype=np.uint8)
+        for [(x,y)] in p0:
+            occupied[y / bin_size, x / bin_size] = 1
+
+        p_new = cv2.goodFeaturesToTrack(frame_gray, mask=None, **feature_params)
+        to_add = []
+        for [(x,y)] in p_new:
+            if not occupied[y / bin_size, x / bin_size]:
+                to_add.append((x, y))
+        if len(to_add):
+            to_add = np.array(to_add).reshape(-1, 1, 2)
+            to_add_ids = np.arange(len(to_add)).reshape(-1, 1) + ids[-1, 0] + 1
+            p0 = np.concatenate((p0, to_add))
+            ids = np.concatenate((ids, to_add_ids))
+
     if visual:
         cv2.destroyAllWindows()
     cap.release()
