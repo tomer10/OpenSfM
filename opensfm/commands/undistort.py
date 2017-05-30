@@ -25,31 +25,42 @@ class Command:
 
         if reconstructions:
             self.undistort_images(graph, reconstructions[0], data)
+            self.undistort_point_cloud_colors(graph, reconstructions[0], data)
 
         data.save_undistorted_tracks_graph(graph)
 
     def undistort_images(self, graph, reconstruction, data):
+        self.undistort_images_template(graph, reconstruction, data,
+                                       data.image_as_array,
+                                       data.save_undistorted_image)
+
+    def undistort_point_cloud_colors(self, graph, reconstruction, data):
+        self.undistort_images_template(graph, reconstruction, data,
+                                       data.pc_color_as_array,
+                                       data.save_undistorted_pc_color)
+
+    def undistort_images_template(self, graph, reconstruction, data, load_image, save_image):
         urec = types.Reconstruction()
         urec.points = reconstruction.points
 
         for shot in reconstruction.shots.values():
             if shot.camera.projection_type == 'perspective':
-                image = data.image_as_array(shot.id)
+                image = load_image(shot.id)
                 undistorted = undistort_image(image, shot.camera)
-                data.save_undistorted_image(shot.id, undistorted)
+                save_image(shot.id, undistorted)
 
                 urec.add_camera(shot.camera)
                 urec.add_shot(shot)
             elif shot.camera.projection_type == 'fisheye':
-                image = data.image_as_array(shot.id)
+                image = load_image(shot.id)
                 undistorted = undistort_fisheye_image(image, shot.camera)
-                data.save_undistorted_image(shot.id, undistorted)
+                save_image(shot.id, undistorted)
 
                 shot.camera = perspective_camera_from_fisheye(shot.camera)
                 urec.add_camera(shot.camera)
                 urec.add_shot(shot)
             elif shot.camera.projection_type in ['equirectangular', 'spherical']:
-                original = data.image_as_array(shot.id)
+                original = load_image(shot.id)
                 width = 4 * int(data.config['depthmap_resolution'])
                 height = width / 2
                 image = cv2.resize(original, (width, height), interpolation=cv2.INTER_AREA)
@@ -59,7 +70,7 @@ class Command:
                     urec.add_shot(subshot)
                     undistorted = render_perspective_view_of_a_panorama(
                         image, shot, subshot)
-                    data.save_undistorted_image(subshot.id, undistorted)
+                    save_image(subshot.id, undistorted)
 
                     add_subshot_tracks(graph, shot, subshot)
 

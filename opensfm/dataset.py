@@ -466,6 +466,25 @@ class DataSet:
             return io.read_ground_control_points_list(
                 fin, self.load_reference_lla(), exif)
 
+    def __pc_color_file(self, image):
+        return os.path.join(self.data_path, 'point_cloud_colors', image)
+
+    def pc_color_as_array(self, image):
+        return io.imread(self.__pc_color_file(image))
+
+    def _undistorted_pc_color_path(self):
+        return os.path.join(self.data_path, 'undistorted_point_cloud_colors')
+
+    def _undistorted_pc_color_file(self, image):
+        return os.path.join(self._undistorted_pc_color_path(), image + '.jpg')
+
+    def undistorted_pc_color_as_array(self, image):
+        return io.imread(self._undistorted_pc_color_file(image))
+
+    def save_undistorted_pc_color(self, image, array):
+        io.mkdir_p(self._undistorted_pc_color_path())
+        cv2.imwrite(self._undistorted_pc_color_file(image), array[:, :, ::-1])
+
 
 def load_tracks_graph(fileobj):
     g = nx.Graph()

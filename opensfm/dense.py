@@ -170,7 +170,7 @@ def merge_depthmaps(data, graph, reconstruction, neighbors):
         depth = depths[shot_id]
         shot = reconstruction.shots[shot_id]
         neighbors_indices = [indices[n] for n in neighbors[shot.id] if n in indices]
-        color_image = data.undistorted_image_as_array(shot.id)
+        color_image = data.undistorted_pc_color_as_array(shot.id)
         height, width = depth.shape
         image = scale_down_image(color_image, width, height)
         K = shot.camera.get_K_in_pixel_coordinates(width, height)
