@@ -11,6 +11,16 @@ from opensfm import types
 logger = logging.getLogger(__name__)
 
 
+def get_pc_color_as_array(data):
+    def res(image):
+        try:
+            return data.pc_color_as_array(image)
+        except TypeError:
+            print 'no pc_color', image
+            return data.image_as_array(image)
+    return res
+
+
 class Command:
     name = 'undistort'
     help = "Save radially undistorted images"
@@ -24,8 +34,8 @@ class Command:
         graph = data.load_tracks_graph()
 
         if reconstructions:
-            self.undistort_images(graph, reconstructions[0], data)
             self.undistort_point_cloud_colors(graph, reconstructions[0], data)
+            self.undistort_images(graph, reconstructions[0], data)
 
         data.save_undistorted_tracks_graph(graph)
 
@@ -36,7 +46,7 @@ class Command:
 
     def undistort_point_cloud_colors(self, graph, reconstruction, data):
         self.undistort_images_template(graph, reconstruction, data,
-                                       data.pc_color_as_array,
+                                       get_pc_color_as_array(data),
                                        data.save_undistorted_pc_color)
 
     def undistort_images_template(self, graph, reconstruction, data, load_image, save_image):
