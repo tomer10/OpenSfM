@@ -73,9 +73,11 @@ reprojection_error_sd: 0.004    # The startard deviation of the reprojection err
 exif_focal_sd: 0.01             # The standard deviation of the exif focal length in log-scale
 radial_distorsion_k1_sd: 0.01   # The standard deviation of the first radial distortion parameter (mean assumed to be 0)
 radial_distorsion_k2_sd: 0.01   # The standard deviation of the second radial distortion parameter (mean assumed to be 0)
-bundle_interval: 0              # bundle adjustment after adding 'bundle_interval' cameras
-bundle_new_points_ratio: 1.2    # bundle when (new points) / (bundled points) > bundle_outlier_threshold
-bundle_outlier_threshold: 0.006
+bundle_outlier_threshold: 0.006 # Points with larger reprojection error after bundle adjustment are removed
+bundle_interval: 0              # Bundle after adding 'bundle_interval' cameras
+bundle_new_points_ratio: 1.2    # Bundle when (new points) / (bundled points) > bundle_outlier_threshold
+optimize_camera_parameters: yes # Optimize internal camera parameters during bundle
+local_bundle_radius: 0          # Max image graph distance for images to be included in local bundle adjustment
 
 save_partial_reconstructions: no
 
@@ -83,7 +85,7 @@ save_partial_reconstructions: no
 use_altitude_tag: no                  # Use or ignore EXIF altitude tag
 align_method: orientation_prior       # orientation_prior or naive
 align_orientation_prior: horizontal   # horizontal, vertical or no_roll
-bundle_use_gps: no                    # Enforce GPS position in bundle adjustment
+bundle_use_gps: yes                   # Enforce GPS position in bundle adjustment
 bundle_use_gcp: no                    # Enforce Ground Control Point position in bundle adjustment
 
 # Params for navigation graph
@@ -112,6 +114,11 @@ depthmap_save_debug_files: no         # Save debug files with partial reconstruc
 
 # Other params
 processes: 1                  # Number of threads to use
+
+# Params for submodel split and merge
+submodels_relpath: "submodels"                                      # Relative path to the submodels directory
+submodel_relpath_template: "submodels/submodel_%04d"                # Template to generate the relative path to a submodel directory
+submodel_images_relpath_template: "submodels/submodel_%04d/images"  # Template to generate the relative path to a submodel images directory
 '''
 
 
