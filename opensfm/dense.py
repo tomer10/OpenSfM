@@ -30,14 +30,14 @@ def compute_depthmaps(data, graph, reconstruction):
         if len(neighbors[shot.id]) <= 1:
             continue
         min_depth, max_depth = compute_depth_range(graph, reconstruction, shot)
-        arguments.append((data, reconstruction, neighbors, min_depth, max_depth, shot))
+        arguments.append((data, neighbors[shot.id], min_depth, max_depth, shot))
     parallel_run(compute_depthmap, arguments, processes)
 
     arguments = []
     for shot in reconstruction.shots.values():
         if len(neighbors[shot.id]) <= 1:
             continue
-        arguments.append((data, reconstruction, neighbors, shot))
+        arguments.append((data, neighbors[shot.id], shot))
     parallel_run(clean_depthmap, arguments, processes)
 
     merge_depthmaps(data, graph, reconstruction, neighbors)
@@ -55,7 +55,7 @@ def parallel_run(function, arguments, num_processes):
 
 def compute_depthmap(arguments):
     """Compute depthmap for a single shot."""
-    data, reconstruction, neighbors, min_depth, max_depth, shot = arguments
+    data, neighbors, min_depth, max_depth, shot = arguments
     method = data.config['depthmap_method']
 
     if data.raw_depthmap_exists(shot.id):
@@ -67,7 +67,7 @@ def compute_depthmap(arguments):
     de.set_depth_range(min_depth, max_depth, 100)
     de.set_patchmatch_iterations(data.config['depthmap_patchmatch_iterations'])
     de.set_min_patch_sd(data.config['depthmap_min_patch_sd'])
-    add_views_to_depth_estimator(data, reconstruction, neighbors[shot.id], de)
+    add_views_to_depth_estimator(data, neighbors, de)
 
     if (method == 'BRUTE_FORCE'):
         depth, plane, score, nghbr = de.compute_brute_force()
@@ -83,7 +83,8 @@ def compute_depthmap(arguments):
     depth = depth * (depth < max_depth) * good_score
 
     # Save and display results
-    data.save_raw_depthmap(shot.id, depth, plane, score, nghbr, neighbors[shot.id][1:])
+    neighbor_ids = [i.id for i in neighbors[1:]]
+    data.save_raw_depthmap(shot.id, depth, plane, score, nghbr, neighbor_ids)
 
     if data.config['depthmap_save_debug_files']:
         image = data.undistorted_image_as_array(shot.id)
@@ -95,7 +96,7 @@ def compute_depthmap(arguments):
     if data.config.get('interactive'):
         import matplotlib.pyplot as plt
         plt.figure()
-        plt.suptitle("Shot: " + shot.id + ", neighbors: " + ', '.join(neighbors[shot.id][1:]))
+        plt.suptitle("Shot: " + shot.id + ", neighbors: " + ', '.join(neighbor_ids))
         plt.subplot(2, 3, 1)
         plt.imshow(image)
         plt.subplot(2, 3, 2)
@@ -114,7 +115,7 @@ def compute_depthmap(arguments):
 
 def clean_depthmap(arguments):
     """Clean depthmap by checking consistency with neighbors."""
-    data, reconstruction, neighbors, shot = arguments
+    data, neighbors, shot = arguments
 
     if data.clean_depthmap_exists(shot.id):
         logger.info("Using precomputed clean depthmap {}".format(shot.id))
@@ -124,7 +125,7 @@ def clean_depthmap(arguments):
     dc = csfm.DepthmapCleaner()
     dc.set_same_depth_threshold(data.config['depthmap_same_depth_threshold'])
     dc.set_min_consistent_views(data.config['depthmap_min_consistent_views'])
-    add_views_to_depth_cleaner(data, reconstruction, neighbors[shot.id], dc)
+    add_views_to_depth_cleaner(data, neighbors, dc)
     depth = dc.clean()
 
     # Save and display results
@@ -169,7 +170,7 @@ def merge_depthmaps(data, graph, reconstruction, neighbors):
     for shot_id in shot_ids:
         depth = depths[shot_id]
         shot = reconstruction.shots[shot_id]
-        neighbors_indices = [indices[n] for n in neighbors[shot.id] if n in indices]
+        neighbors_indices = [indices[n.id] for n in neighbors[shot.id] if n.id in indices]
         color_image = data.undistorted_pc_color_as_array(shot.id)
         height, width = depth.shape
         image = scale_down_image(color_image, width, height)
@@ -185,11 +186,10 @@ def merge_depthmaps(data, graph, reconstruction, neighbors):
         fout.write(ply)
 
 
-def add_views_to_depth_estimator(data, reconstruction, neighbors, de):
+def add_views_to_depth_estimator(data, neighbors, de):
     """Add neighboring views to the DepthmapEstimator."""
     num_neighbors = data.config['depthmap_num_matching_views']
-    for neighbor in neighbors[:num_neighbors + 1]:
-        shot = reconstruction.shots[neighbor]
+    for shot in neighbors[:num_neighbors + 1]:
         assert shot.camera.projection_type == 'perspective'
         color_image = data.undistorted_image_as_array(shot.id)
         gray_image = cv2.cvtColor(color_image, cv2.COLOR_RGB2GRAY)
@@ -203,9 +203,8 @@ def add_views_to_depth_estimator(data, reconstruction, neighbors, de):
         de.add_view(K, R, t, image)
 
 
-def add_views_to_depth_cleaner(data, reconstruction, neighbors, dc):
-    for neighbor in neighbors:
-        shot = reconstruction.shots[neighbor]
+def add_views_to_depth_cleaner(data, neighbors, dc):
+    for shot in neighbors:
         if not data.raw_depthmap_exists(shot.id):
             continue
         depth, plane, score, nghbr, nghbrs = data.load_raw_depthmap(shot.id)
@@ -251,7 +250,7 @@ def find_neighboring_images(shot, common_tracks, reconstruction, num_neighbors=5
             ns.append((other, score))
 
     ns.sort(key=lambda ns: ns[1], reverse=True)
-    return [shot.id] + [n.id for n, s in ns[:num_neighbors]]
+    return [shot] + [n for n, s in ns[:num_neighbors]]
 
 
 def angle_between_points(origin, p1, p2):
