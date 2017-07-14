@@ -182,7 +182,7 @@ def merge_depthmaps(data, graph, reconstruction, neighbors):
     # Merge.
     points, normals, colors = dm.merge()
     ply = point_cloud_to_ply(points, normals, colors)
-    with open(data._depthmap_path() + '/merged.ply', 'w') as fout:
+    with open(data._depthmap_path() + '/merged.painted.ply', 'w') as fout:
         fout.write(ply)
 
 
