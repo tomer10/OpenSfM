@@ -14,13 +14,15 @@ import cv2
 class Calibrator:
     """Camera calibration using a chessboard pattern."""
 
-    def __init__(self, pattern_width, pattern_height, motion_threshold=0.05):
+    def __init__(self, pattern_width, pattern_height, max_image_size,
+                 motion_threshold=0.05):
         """Init the calibrator.
 
         The parameter motion_threshold determines the minimal motion required
         to add a new frame to the calibration data, as a ratio of image width.
         """
         self.pattern_size = (pattern_width, pattern_height)
+        self.max_image_size = max_image_size
         self.motion_threshold = motion_threshold
         self.pattern_points = np.array([
             (i, j, 0.0)
@@ -32,20 +34,20 @@ class Calibrator:
 
     def process_image(self, image, window_name):
         """Find corners of an image and store them internally."""
+        self.image_size = (image.shape[1], image.shape[0])
+        image = self._resize_image(image)
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
             gray = image
-
-        h, w = gray.shape
-        self.image_size = (w, h)
 
         found, corners = cv2.findChessboardCorners(gray, self.pattern_size)
 
         if found:
             term = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_COUNT, 30, 0.1)
             cv2.cornerSubPix(gray, corners, (5, 5), (-1, -1), term)
-            self._add_points(corners.reshape(-1, 2))
+            points = self._resize_points(corners.reshape(-1, 2))
+            self._add_points(points)
 
         if window_name:
             cv2.drawChessboardCorners(image, self.pattern_size, corners, found)
@@ -58,6 +60,21 @@ class Calibrator:
         rms, camera_matrix, dist_coefs, rvecs, tvecs = cv2.calibrateCamera(
             self.object_points, self.image_points, self.image_size, None, None)
         return rms, camera_matrix, dist_coefs.ravel()
+
+    def _resize_image(self, image):
+        h, w = image.shape[:2]
+        if self.max_image_size:
+            rw = w * self.max_image_size / max(w, h)
+            rh = h * self.max_image_size / max(w, h)
+            return cv2.resize(image, (rw, rh), interpolation=cv2.INTER_AREA)
+        else:
+            return image
+
+    def _resize_points(self, points):
+        if self.max_image_size:
+            w, h = self.image_size
+            return points * max(w, h) / self.max_image_size
+        return points
 
     def _add_points(self, image_points):
         if self.image_points:
@@ -122,13 +139,15 @@ def parse_arguments():
         default='calibration',
         help="base name for the output files")
     parser.add_argument(
-        '--size',
+        '--pattern-size',
         default='8x6',
         help="size of the chessboard")
     parser.add_argument(
-        '--max-image-size',
+        '--image-size',
         type=int,
-        help="Resize images to this size for detecting corners")
+        default=0,
+        help="Resize images to this size for detecting corners. "
+             "Set to 0 to use the original image size.")
     parser.add_argument(
         '--visual',
         action='store_true',
@@ -139,8 +158,8 @@ def parse_arguments():
 if __name__ == '__main__':
     args = parse_arguments()
 
-    pattern_size = [int(i) for i in args.size.split('x')]
-    calibrator = Calibrator(pattern_size[0], pattern_size[1])
+    pattern_size = [int(i) for i in args.pattern_size.split('x')]
+    calibrator = Calibrator(pattern_size[0], pattern_size[1], args.image_size)
 
     window_name = None
     if args.visual:
@@ -154,19 +173,8 @@ if __name__ == '__main__':
     elif args.images:
         frames = image_frames(args.images)
 
-    image_size = None
-    resized_image_size = None
     for i, frame in enumerate(frames):
-        if not image_size:
-            image_size = (frame.shape[1], frame.shape[0])
-            resized_image_size = image_size
-        if args.max_image_size:
-            resized_image_size = (
-                image_size[0] * args.max_image_size / max(image_size),
-                image_size[1] * args.max_image_size / max(image_size)
-            )
-            frame = cv2.resize(frame, resized_image_size,
-                               interpolation=cv2.INTER_AREA)
+        image_size = (frame.shape[1], frame.shape[0])
 
         found = calibrator.process_image(frame, window_name)
 
@@ -189,8 +197,6 @@ if __name__ == '__main__':
     print()
     print("image size:")
     print(image_size)
-    camera_matrix[0, :] *= float(image_size[0]) / resized_image_size[0]
-    camera_matrix[1, :] *= float(image_size[1]) / resized_image_size[1]
     print("camera matrix K:")
     print(camera_matrix)
     print("distortion coeficients [k1 k2 p1 p2 k3]:")
