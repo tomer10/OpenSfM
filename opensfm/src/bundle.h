@@ -155,6 +155,15 @@ struct BAGroundControlPointObservation {
   double coordinates2d[2];
 };
 
+struct BALinearMotionPrior {
+  BAShot *shot0;
+  BAShot *shot1;
+  BAShot *shot2;
+  double alpha;
+  double position_std_deviation;
+  double orientation_std_deviation;
+};
+
 class TruncatedLoss : public ceres::LossFunction {
  public:
   explicit TruncatedLoss(double t)
@@ -556,6 +565,84 @@ struct PointPositionPriorError {
   double scale_;
 };
 
+struct LinearMotionError {
+  LinearMotionError(double alpha,
+                      double position_std_deviation,
+                      double orientation_std_deviation)
+      : alpha_(alpha)
+      , position_scale_(1.0 / position_std_deviation)
+      , orientation_scale_(1.0 / orientation_std_deviation)
+  {}
+
+  template <typename T>
+  bool operator()(const T* const shot0,
+                  const T* const shot1,
+                  const T* const shot2,
+                  T* residuals) const {
+
+    const T* const R0 = shot0 + BA_SHOT_RX;
+    const T* const t0 = shot0 + BA_SHOT_TX;
+    const T* const R1 = shot1 + BA_SHOT_RX;
+    const T* const t1 = shot1 + BA_SHOT_TX;
+    const T* const R2 = shot2 + BA_SHOT_RX;
+    const T* const t2 = shot2 + BA_SHOT_TX;
+
+    T R0t[3] = { -R0[0], -R0[1], -R0[2] };
+    T R1t[3] = { -R1[0], -R1[1], -R1[2] };
+    T R2t[3] = { -R2[0], -R2[1], -R2[2] };
+
+    // Position residual
+    T c0[3];
+    ceres::AngleAxisRotatePoint(R0t, t0, c0);
+    T c1[3];
+    ceres::AngleAxisRotatePoint(R1t, t1, c1);
+    T c2[3];
+    ceres::AngleAxisRotatePoint(R2t, t2, c2);
+
+    residuals[0] = T(position_scale_) * (c0[0] + T(alpha_) * (c2[0] - c0[0]) - c1[0]);
+    residuals[1] = T(position_scale_) * (c0[1] + T(alpha_) * (c2[1] - c0[1]) - c1[1]);
+    residuals[2] = T(position_scale_) * (c0[2] + T(alpha_) * (c2[2] - c0[2]) - c1[2]);
+
+    // Orientation residual
+    T q0[4], q0t[4], q1[4], q1t[4], q2[4];
+
+    ceres::AngleAxisToQuaternion(R0, q0);
+    ceres::AngleAxisToQuaternion(R0t, q0t);
+    ceres::AngleAxisToQuaternion(R1, q1);
+    ceres::AngleAxisToQuaternion(R1t, q1t);
+    ceres::AngleAxisToQuaternion(R2, q2);
+
+    T q2_q0t[4], q0_q1t[4];
+    ceres::QuaternionProduct(q2, q0t, q2_q0t);
+    ceres::QuaternionProduct(q0, q1t, q0_q1t);
+
+    T R2_R0t[3];
+    ceres::QuaternionToAngleAxis(q2_q0t, R2_R0t);
+    R2_R0t[0] *= T(alpha_);
+    R2_R0t[1] *= T(alpha_);
+    R2_R0t[2] *= T(alpha_);
+
+    T q2_q0t_alpha[4];
+    ceres::AngleAxisToQuaternion(R2_R0t, q2_q0t_alpha);
+
+    T qtotal[4], Rtotal[3];
+    ceres::QuaternionProduct(q2_q0t_alpha, q0_q1t, qtotal);
+    ceres::QuaternionToAngleAxis(qtotal, Rtotal);
+
+    residuals[3] = T(orientation_scale_) * Rtotal[0];
+    residuals[4] = T(orientation_scale_) * Rtotal[1];
+    residuals[5] = T(orientation_scale_) * Rtotal[2];
+
+    return true;
+  }
+
+  double acceleration_[3];
+  double position_scale_;
+  double orientation_scale_;
+  double alpha_;
+};
+
+
 
 // A bundle adjustment class for optimizing the problem
 //
@@ -782,6 +869,23 @@ class BundleAdjuster {
     o.coordinates2d[0] = x2d;
     o.coordinates2d[1] = y2d;
     gcp_observations_.push_back(o);
+  }
+
+  void AddLinearMotionPrior(
+      const std::string &shot0_id,
+      const std::string &shot1_id,
+      const std::string &shot2_id,
+      double alpha,
+      double position_std_deviation,
+      double orientation_std_deviation) {
+    BALinearMotionPrior a;
+    a.shot0 = &shots_[shot0_id];
+    a.shot1 = &shots_[shot1_id];
+    a.shot2 = &shots_[shot2_id];
+    a.alpha = alpha;
+    a.position_std_deviation = position_std_deviation;
+    a.orientation_std_deviation = orientation_std_deviation;
+    linear_motion_prior_.push_back(a);
   }
 
   void SetOriginShot(const std::string &shot_id) {
@@ -1020,6 +1124,20 @@ class BundleAdjuster {
       }
     }
 
+    // Add linear motion priors
+    ceres::LossFunction *linear_motion_prior_loss_ = new ceres::CauchyLoss(1);
+    for (auto &a: linear_motion_prior_) {
+      ceres::CostFunction* cost_function =
+          new ceres::AutoDiffCostFunction<LinearMotionError, 6, 6, 6, 6>(
+              new LinearMotionError(a.alpha, a.position_std_deviation, a.orientation_std_deviation));
+
+      problem.AddResidualBlock(cost_function,
+                               linear_motion_prior_loss_,
+                               a.shot0->parameters,
+                               a.shot1->parameters,
+                               a.shot2->parameters);
+    }
+
     // Add internal parameter priors blocks
     for (auto &i : cameras_) {
       switch (i.second->type()) {
@@ -1201,6 +1319,7 @@ class BundleAdjuster {
   std::vector<BAPositionPrior> position_priors_;
   std::vector<BAPointPositionPrior> point_position_priors_;
   std::vector<BAGroundControlPointObservation> gcp_observations_;
+  std::vector<BALinearMotionPrior> linear_motion_prior_;
 
   BAShot *unit_translation_shot_;
 

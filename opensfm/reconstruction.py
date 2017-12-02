@@ -81,6 +81,16 @@ def bundle(graph, reconstruction, gcp, config):
                     observation.shot_coordinates[0],
                     observation.shot_coordinates[1])
 
+    if False:  # TODO(pau): add flag to activate the prior
+        shot_ids = sorted(reconstruction.shots.keys())
+        for i in range(1, len(shot_ids) - 1):
+            # TODO(pau): compute alpha and stds from captured_at
+            alpha = 0.5
+            position_std = 1.0
+            orientation_std = 10.0
+            ba.add_linear_motion_prior(shot_ids[i - 1], shot_ids[i], shot_ids[i + 1],
+                                       alpha, position_std, orientation_std)
+
     ba.set_loss_function(config['loss_function'],
                          config['loss_function_threshold'])
     ba.set_reprojection_error_sd(config['reprojection_error_sd'])
