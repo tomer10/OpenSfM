@@ -61,6 +61,14 @@ class Calibrator:
             self.object_points, self.image_points, self.image_size, None, None)
         return rms, camera_matrix, dist_coefs.ravel()
 
+    def calibrate_fisheye(self):
+        """Run fisheye calibration using points extracted by process_image."""
+        rms, camera_matrix, dist_coefs, rvecs, tvecs = cv2.fisheye.calibrate(
+            [i.reshape(-1, 1, 3) for i in self.object_points],
+            [i.reshape(-1, 1, 2) for i in self.image_points],
+            self.image_size, None, None)
+        return rms, camera_matrix, dist_coefs.ravel()
+
     def _resize_image(self, image):
         h, w = image.shape[:2]
         if self.max_image_size:
@@ -149,6 +157,11 @@ def parse_arguments():
         help="Resize images to this size for detecting corners. "
              "Set to 0 to use the original image size.")
     parser.add_argument(
+        '--fisheye',
+        action='store_true',
+        help="use fisheye model")
+
+    parser.add_argument(
         '--visual',
         action='store_true',
         help="display images while calibrating")
@@ -188,9 +201,14 @@ if __name__ == '__main__':
 
     cv2.destroyAllWindows()
 
-    rms, camera_matrix, dist_coefs = calibrator.calibrate()
-    camera_model = perspective_camera_model(
-        camera_matrix, dist_coefs, image_size)
+    if args.fisheye:
+        rms, camera_matrix, dist_coefs = calibrator.calibrate_fisheye()
+        camera_model = perspective_camera_model(
+            camera_matrix, dist_coefs, image_size)
+    else:
+        rms, camera_matrix, dist_coefs = calibrator.calibrate()
+        camera_model = perspective_camera_model(
+            camera_matrix, dist_coefs, image_size)
 
     print()
     print(json.dumps(camera_model, indent=4))
