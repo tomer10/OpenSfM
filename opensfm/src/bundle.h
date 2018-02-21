@@ -742,7 +742,7 @@ struct PositionPriorError {
 
     residuals[0] = T(scale_) * (p[0] + T(position_prior_[0]));
     residuals[1] = T(scale_) * (p[1] + T(position_prior_[1]));
-    residuals[2] = T(scale_) * (p[2] + T(position_prior_[2]));
+    residuals[2] = T(0.01 * scale_) * (p[2] + T(position_prior_[2]));
     return true;
   }
 
