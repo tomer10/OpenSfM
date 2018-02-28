@@ -124,18 +124,6 @@ def _compute_inliers_bearings(b1, b2, T):
     ok1 = np.linalg.norm(br1 - b1, axis=1) < 0.004   # TODO(pau): compute angular error and use proper threshold
     ok2 = np.linalg.norm(br2 - b2, axis=1) < 0.004
 
-    # from mpl_toolkits.mplot3d import Axes3D
-    # import matplotlib.pyplot as plt
-
-    # ip = p[ok1 * ok2]
-    # fig = plt.figure()
-    # ax = fig.add_subplot(111, projection='3d')
-    # ax.scatter(ip[:, 0], ip[:, 1], ip[:, 2])
-    # ax.set_xlabel('X')
-    # ax.set_ylabel('Y')
-    # ax.set_zlabel('Z')
-    # plt.show()
-
     return ok1 * ok2
 
 
