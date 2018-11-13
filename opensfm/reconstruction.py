@@ -222,10 +222,10 @@ def bundle_single_view(graph, reconstruction, shot_id, config):
         config['radial_distorsion_p2_sd'],
         config['radial_distorsion_k3_sd'])
     ba.set_num_threads(config['processes'])
-
-    ba.run()
     ba.set_max_num_iterations(10)
     ba.set_linear_solver_type("DENSE_QR")
+
+    ba.run()
 
     logger.debug(ba.brief_report())
 
@@ -426,8 +426,17 @@ def _pair_reconstructability_arguments(track_dict, data):
     cameras = data.load_camera_models()
     args = []
     for (im1, im2), (tracks, p1, p2) in iteritems(track_dict):
-        camera1 = cameras[data.load_exif(im1)['camera']]
-        camera2 = cameras[data.load_exif(im2)['camera']]
+
+        # TomerPatch: replace exif camera with available one  u'v2 unknown unknown 1280 720 perspective 0' --> halocam
+        exif_cam1=data.load_exif(im1)['camera']
+        exif_cam2=data.load_exif(im2)['camera']
+        # if not exif_cam1 in cameras:
+        #     exif_cam1 = cameras.keys()[0]
+        # if not exif_cam2 in cameras:
+        #     exif_cam2 = cameras.keys()[0]
+
+        camera1 = cameras[exif_cam1]  # data.load_exif(im1)['camera']]
+        camera2 = cameras[exif_cam2]  # data.load_exif(im2)['camera']]
         args.append((im1, im2, p1, p2, camera1, camera2, threshold))
     return args
 
@@ -682,8 +691,19 @@ def bootstrap_reconstruction(data, graph, im1, im2, p1, p2):
     }
 
     cameras = data.load_camera_models()
-    camera1 = cameras[data.load_exif(im1)['camera']]
-    camera2 = cameras[data.load_exif(im2)['camera']]
+
+
+    # TomerPatch
+    # TomerPatch: replace exif camera with available one  u'v2 unknown unknown 1280 720 perspective 0' --> halocam
+    exif_cam1 = data.load_exif(im1)['camera']
+    exif_cam2 = data.load_exif(im2)['camera']
+    # if not exif_cam1 in cameras:
+    #     exif_cam1 = cameras.keys()[0]
+    # if not exif_cam2 in cameras:
+    #     exif_cam2 = cameras.keys()[0]
+
+    camera1 = cameras[exif_cam1]  # data.load_exif(im1)['camera']]
+    camera2 = cameras[exif_cam2]  # data.load_exif(im2)['camera']]
 
     threshold = data.config['five_point_algo_threshold']
     min_inliers = data.config['five_point_algo_min_inliers']
@@ -759,6 +779,8 @@ def resect(data, graph, reconstruction, shot_id):
         True on success.
     """
     exif = data.load_exif(shot_id)
+
+
     camera = reconstruction.cameras[exif['camera']]
 
     bs = []

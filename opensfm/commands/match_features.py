@@ -256,6 +256,12 @@ def match(args):
             im1_matches[im2] = []
             continue
 
+        # TomerPatch: replace exif camera with available one
+        if not ctx.exifs[im1]['camera'] in ctx.cameras:
+            ctx.exifs[im1]['camera'] = ctx.cameras.keys()[0]
+        if not ctx.exifs[im2]['camera'] in ctx.cameras:
+            ctx.exifs[im2]['camera'] = ctx.cameras.keys()[0]
+
         # robust matching
         t_robust_matching = timer()
         camera1 = ctx.cameras[ctx.exifs[im1]['camera']]

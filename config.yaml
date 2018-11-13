@@ -72,6 +72,8 @@ bundle_interval: 0              # bundle adjustment after adding 'bundle_interva
 bundle_new_points_ratio: 1.2    # bundle when (new points) / (bundled points) > bundle_outlier_threshold
 bundle_outlier_threshold: 0.006
 
+force_camera_type: halocam           # replace exif camera type with other camera
+
 save_partial_reconstructions: no
 
 # Params for GPS aligment

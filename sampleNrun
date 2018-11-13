@@ -1,0 +1,17 @@
+#!/bin/bash
+#  Sample video using ffmpeg
+#  run OpenSfm
+
+fps=1
+echo "sample to "+ fps +" fps"
+
+mkdir data/incident2_$fps
+mkdir data/incident2_$fps/images
+ffmpeg -i data/d2beb060-fb7b-43ac-827e-302e8c0d3248.mov -ss 00:00:10.00 -vframes 20 -r $fps data/incident2_$fps/images/fr%04d.jpg
+
+
+cp data/camera_models.json data/incident2_$fps
+cp data/config.yaml data/incident2_$fps
+
+echo "run - OpenSfm"
+bin/opensfm_run_all  data/incident2_$fps

@@ -83,6 +83,9 @@ radial_distorsion_p2_sd: 0.01   # The standard deviation of the second tangentia
 bundle_outlier_threshold: 0.006     # Points with larger reprojection error after bundle adjustment are removed
 optimize_camera_parameters: yes     # Optimize internal camera parameters during bundle
 
+force_camera_type: halocam           # replace exif camera type with other camera
+
+
 retriangulation: yes                # Retriangulate all points from time to time
 retriangulation_ratio: 1.2          # Retriangulate when the number of points grows by this ratio
 bundle_interval: 999999             # Bundle after adding 'bundle_interval' cameras

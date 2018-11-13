@@ -12,10 +12,19 @@ from opensfm import transformations as tf
 logger = logging.getLogger(__name__)
 
 
+
+acnt = 0
+def inc_acnt():
+    global acnt
+    acnt += 1
+
 def align_reconstruction(reconstruction, gcp, config):
     """Align a reconstruction with GPS and GCP data."""
     res = align_reconstruction_similarity(reconstruction, gcp, config)
-    if res:
+    if res :
+        # if np.isnan(res[1]).any():
+        #     print('Warning: align_reconstruction = NaN\n')  #Tomer - add protection from NaN
+        # else:
         s, A, b = res
         apply_similarity(reconstruction, s, A, b)
 
@@ -58,7 +67,6 @@ def align_reconstruction_similarity(reconstruction, gcp, config):
     elif align_method == 'naive':
         return align_reconstruction_naive_similarity(reconstruction, gcp)
 
-
 def align_reconstruction_naive_similarity(reconstruction, gcp):
     """Align with GPS and GCP data using direct 3D-3D matches."""
     X, Xp = [], []
@@ -69,10 +77,10 @@ def align_reconstruction_naive_similarity(reconstruction, gcp):
         X.extend(triangulated)
         Xp.extend(measured)
 
-    # Get camera center correspondences
-    for shot in reconstruction.shots.values():
-        X.append(shot.pose.get_origin())
-        Xp.append(shot.metadata.gps_position)
+    # # Get camera center correspondences  Tomer: label out camera location to put more focus on control points & support Ctl-pnt without GPS input
+    # for shot in reconstruction.shots.values():
+    #     X.append(shot.pose.get_origin())
+    #     Xp.append(shot.metadata.gps_position)
 
     if len(X) < 3:
         return
@@ -85,6 +93,11 @@ def align_reconstruction_naive_similarity(reconstruction, gcp):
     A, b = T[:3, :3], T[:3, 3]
     s = np.linalg.det(A)**(1. / 3)
     A /= s
+
+    logger.info("align_reconstruction_naive_similarity,"
+                "Itr={}, Scale = {}, len(X)={}, im={}".format(acnt,s, len(X),reconstruction.shots.keys())) # Tomer: log
+    inc_acnt()
+
     return s, A, b
 
 
@@ -132,10 +145,17 @@ def align_reconstruction_orientation_prior_similarity(reconstruction, config):
     Rplane = multiview.plane_horizontalling_rotation(p)
     X = Rplane.dot(X.T).T
 
+
+    # if np.max(Xp)==0.:  # Tomer
+    #     should_skip_gps=True  # tomer  no GPS inpormation available
+    # else:
+    #     should_skip_gps=False
+
+
     # Estimate 2d similarity to align to GPS
     if (len(X) < 2 or
             X.std(axis=0).max() < 1e-8 or     # All points are the same.
-            Xp.std(axis=0).max() < 0.01):      # All GPS points are the same.
+        (Xp.std(axis=0).max() < 0.01 )):      # All GPS points are the same.
         # Set the arbitrary scale proportional to the number of cameras.
         s = len(X) / max(1e-8, X.std(axis=0).max())
         A = Rplane
@@ -183,7 +203,7 @@ def get_horizontal_and_vertical_directions(R, orientation):
 
 def triangulate_single_gcp(reconstruction, observations):
     """Triangulate one Ground Control Point."""
-    reproj_threshold = 0.004
+    reproj_threshold = 0.04  # Tomer: was 0.004 - lower TH to get more matches & alignment
     min_ray_angle_degrees = 2.0
 
     os, bs = [], []

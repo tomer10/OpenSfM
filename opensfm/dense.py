@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import logging
 
@@ -49,7 +53,7 @@ def compute_depthmaps(data, graph, reconstruction):
         arguments.append((data, neighbors[shot.id], shot))
     parallel_map(prune_depthmap_catched, arguments, processes)
 
-    merge_depthmaps(data, graph, reconstruction, neighbors)
+    merge_depthmaps(data, reconstruction)
 
 
 def compute_depthmap_catched(arguments):
@@ -113,7 +117,7 @@ def compute_depthmap(arguments):
     data.save_raw_depthmap(shot.id, depth, plane, score, nghbr, neighbor_ids)
 
     if data.config['depthmap_save_debug_files']:
-        image = data.undistorted_image_as_array(shot.id)
+        image = data.load_undistorted_image(shot.id)
         image = scale_down_image(image, depth.shape[1], depth.shape[0])
         ply = depthmap_to_ply(shot, depth, image)
         with io.open_wt(data._depthmap_file(shot.id, 'raw.npz.ply')) as fout:
@@ -161,7 +165,7 @@ def clean_depthmap(arguments):
     data.save_clean_depthmap(shot.id, depth, raw_plane, raw_score)
 
     if data.config['depthmap_save_debug_files']:
-        image = data.undistorted_image_as_array(shot.id)
+        image = data.load_undistorted_image(shot.id)
         image = scale_down_image(image, depth.shape[1], depth.shape[0])
         ply = depthmap_to_ply(shot, depth, image)
         with io.open_wt(data._depthmap_file(shot.id, 'clean.npz.ply')) as fout:
@@ -194,38 +198,39 @@ def prune_depthmap(arguments):
     dp = csfm.DepthmapPruner()
     dp.set_same_depth_threshold(data.config['depthmap_same_depth_threshold'])
     add_views_to_depth_pruner(data, neighbors, dp)
-    points, normals, colors = dp.prune()
+    points, normals, colors, labels = dp.prune()
 
     # Save and display results
-    data.save_pruned_depthmap(shot.id, points, normals, colors)
+    data.save_pruned_depthmap(shot.id, points, normals, colors, labels)
 
     if data.config['depthmap_save_debug_files']:
-        ply = point_cloud_to_ply(points, normals, colors)
-        with io.open_wt(data._depthmap_file(shot.id, 'pruned.npz.ply')) as fout:
-            fout.write(ply)
+        with io.open_wt(data._depthmap_file(shot.id, 'pruned.npz.ply')) as fp:
+            point_cloud_to_ply(points, normals, colors, labels, fp)
 
 
-def merge_depthmaps(data, graph, reconstruction, neighbors):
+def merge_depthmaps(data, reconstruction):
     """Merge depthmaps into a single point cloud."""
     logger.info("Merging depthmaps")
 
-    shot_ids = [s for s in neighbors if data.pruned_depthmap_exists(s)]
+    shot_ids = [s for s in reconstruction.shots if data.pruned_depthmap_exists(s)]
     points = []
     normals = []
     colors = []
+    labels = []
     for shot_id in shot_ids:
-        p, n, c = data.load_pruned_depthmap(shot_id)
+        p, n, c, l = data.load_pruned_depthmap(shot_id)
         points.append(p)
         normals.append(n)
         colors.append(c)
+        labels.append(l)
 
     points = np.concatenate(points)
     normals = np.concatenate(normals)
     colors = np.concatenate(colors)
+    labels = np.concatenate(labels)
 
-    ply = point_cloud_to_ply(points, normals, colors)
-    with io.open_wt(data._depthmap_path() + '/merged.ply') as fout:
-        fout.write(ply)
+    with io.open_wt(data._depthmap_path() + '/merged.ply') as fp:
+        point_cloud_to_ply(points, normals, colors, labels, fp)
 
 
 def add_views_to_depth_estimator(data, neighbors, de):
@@ -233,16 +238,18 @@ def add_views_to_depth_estimator(data, neighbors, de):
     num_neighbors = data.config['depthmap_num_matching_views']
     for shot in neighbors[:num_neighbors + 1]:
         assert shot.camera.projection_type == 'perspective'
-        color_image = data.undistorted_image_as_array(shot.id)
+        color_image = data.load_undistorted_image(shot.id)
+        mask = load_combined_mask(data, shot)
         gray_image = cv2.cvtColor(color_image, cv2.COLOR_RGB2GRAY)
         original_height, original_width = gray_image.shape
         width = int(data.config['depthmap_resolution'])
         height = width * original_height // original_width
         image = scale_down_image(gray_image, width, height)
+        mask = scale_down_image(mask, width, height, cv2.INTER_NEAREST)
         K = shot.camera.get_K_in_pixel_coordinates(width, height)
         R = shot.pose.get_rotation_matrix()
         t = shot.pose.translation
-        de.add_view(K, R, t, image)
+        de.add_view(K, R, t, image, mask)
 
 
 def add_views_to_depth_cleaner(data, neighbors, dc):
@@ -257,19 +264,46 @@ def add_views_to_depth_cleaner(data, neighbors, dc):
         dc.add_view(K, R, t, depth)
 
 
+def load_combined_mask(data, shot):
+    """Load the undistorted mask.
+
+    If no mask exists return an array of ones.
+    """
+    mask = data.load_undistorted_combined_mask(shot.id)
+    if mask is None:
+        size = shot.camera.height, shot.camera.width
+        return np.ones(size, dtype=np.uint8)
+    else:
+        return mask
+
+
+def load_segmentation_labels(data, shot):
+    """Load the undistorted segmentation labels.
+
+    If no segmentation exists return an array of zeros.
+    """
+    if data.undistorted_segmentation_exists(shot.id):
+        return data.load_undistorted_segmentation(shot.id)
+    else:
+        size = shot.camera.height, shot.camera.width
+        return np.zeros(size, dtype=np.uint8)
+
+
 def add_views_to_depth_pruner(data, neighbors, dp):
     for shot in neighbors:
         if not data.raw_depthmap_exists(shot.id):
             continue
         depth, plane, score = data.load_clean_depthmap(shot.id)
         height, width = depth.shape
-        color_image = data.undistorted_image_as_array(shot.id)
+        color_image = data.load_undistorted_image(shot.id)
+        labels = load_segmentation_labels(data, shot)
         height, width = depth.shape
         image = scale_down_image(color_image, width, height)
+        labels = scale_down_image(labels, width, height, cv2.INTER_NEAREST)
         K = shot.camera.get_K_in_pixel_coordinates(width, height)
         R = shot.pose.get_rotation_matrix()
         t = shot.pose.translation
-        dp.add_view(K, R, t, depth, plane, image)
+        dp.add_view(K, R, t, depth, plane, image, labels)
 
 
 def compute_depth_range(graph, reconstruction, shot):
@@ -330,10 +364,10 @@ def distance_between_shots(shot, other):
     return np.sqrt(np.sum(l**2))
 
 
-def scale_down_image(image, width, height):
+def scale_down_image(image, width, height, interpolation=cv2.INTER_AREA):
     width = min(width, image.shape[1])
     height = min(height, image.shape[0])
-    return cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
+    return cv2.resize(image, (width, height), interpolation=interpolation)
 
 
 def depthmap_to_ply(shot, depth, image):
@@ -349,50 +383,53 @@ def depthmap_to_ply(shot, depth, image):
 
     vertices = []
     for p, c in zip(points.T, image.reshape(-1, 3)):
-        s = u"{} {} {} {} {} {}".format(p[0], p[1], p[2], c[0], c[1], c[2])
+        s = "{} {} {} {} {} {}".format(p[0], p[1], p[2], c[0], c[1], c[2])
         vertices.append(s)
 
     header = [
-        u"ply",
-        u"format ascii 1.0",
-        u"element vertex {}".format(len(vertices)),
-        u"property float x",
-        u"property float y",
-        u"property float z",
-        u"property uchar diffuse_red",
-        u"property uchar diffuse_green",
-        u"property uchar diffuse_blue",
-        u"end_header",
+        "ply",
+        "format ascii 1.0",
+        "element vertex {}".format(len(vertices)),
+        "property float x",
+        "property float y",
+        "property float z",
+        "property uchar diffuse_red",
+        "property uchar diffuse_green",
+        "property uchar diffuse_blue",
+        "end_header",
     ]
 
     return '\n'.join(header + vertices + [''])
 
 
-def point_cloud_to_ply(points, normals, colors):
+def point_cloud_to_ply(points, normals, colors, labels, fp):
     """Export depthmap points as a PLY string"""
-    vertices = []
-    for p, n, c in zip(points, normals, colors):
-        s = u"{:.4f} {:.4f} {:.4f} {:.3f} {:.3f} {:.3f} {} {} {}".format(
-            p[0], p[1], p[2], n[0], n[1], n[2], int(c[0]), int(c[1]), int(c[2]))
-        vertices.append(s)
+    lines = _point_cloud_to_ply_lines(points, normals, colors, labels)
+    fp.writelines(lines)
 
-    header = [
-        u"ply",
-        u"format ascii 1.0",
-        u"element vertex {}".format(len(vertices)),
-        u"property float x",
-        u"property float y",
-        u"property float z",
-        u"property float nx",
-        u"property float ny",
-        u"property float nz",
-        u"property uchar diffuse_red",
-        u"property uchar diffuse_green",
-        u"property uchar diffuse_blue",
-        u"end_header",
-    ]
 
-    return '\n'.join(header + vertices + [''])
+def _point_cloud_to_ply_lines(points, normals, colors, labels):
+    yield "ply\n"
+    yield "format ascii 1.0\n"
+    yield "element vertex {}\n".format(len(points))
+    yield "property float x\n"
+    yield "property float y\n"
+    yield "property float z\n"
+    yield "property float nx\n"
+    yield "property float ny\n"
+    yield "property float nz\n"
+    yield "property uchar diffuse_red\n"
+    yield "property uchar diffuse_green\n"
+    yield "property uchar diffuse_blue\n"
+    yield "property uchar class\n"
+    yield "end_header\n"
+
+    template = "{:.4f} {:.4f} {:.4f} {:.3f} {:.3f} {:.3f} {} {} {} {}\n"
+    for i in range(len(points)):
+        p, n, c, l = points[i], normals[i], colors[i], labels[i]
+        yield template.format(
+            p[0], p[1], p[2], n[0], n[1], n[2],
+            int(c[0]), int(c[1]), int(c[2]), int(l))
 
 
 def color_plane_normals(plane):

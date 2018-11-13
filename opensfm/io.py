@@ -1,4 +1,8 @@
 from __future__ import absolute_import
+from __future__ import unicode_literals
+from __future__ import division
+from __future__ import print_function
+
 import errno
 import io
 import json
@@ -365,16 +369,19 @@ def _read_gcp_list_line(line, projection, reference_lla, exif):
         reference_lla['longitude'],
         reference_lla['altitude'])
 
+    o=[]
+    if shot_id in exif:  #Tomer - skip redundent files
     # Convert 2D coordinates
-    d = exif[shot_id]
-    coordinates = features.normalized_image_coordinates(
-        np.array([[pixel_x, pixel_y]]), d['width'], d['height'])[0]
+        d = exif[shot_id]
+        coordinates = features.normalized_image_coordinates(
+            np.array([[pixel_x, pixel_y]]), d['width'], d['height'])[0]
 
-    o = types.GroundControlPointObservation()
-    o.lla = np.array([lat, lon, alt])
-    o.coordinates = np.array([x, y, z])
-    o.shot_id = shot_id
-    o.shot_coordinates = coordinates
+        o = types.GroundControlPointObservation()
+        o.lla = np.array([lat, lon, alt])
+        o.coordinates = np.array([x, y, z])
+        o.shot_id = shot_id
+        o.shot_coordinates = coordinates
+
     return o
 
 
@@ -420,9 +427,13 @@ def read_ground_control_points_list(fileobj, reference_lla, exif):
     """
     all_lines = fileobj.readlines()
     lines = iter(filter(_valid_gcp_line, all_lines))
-    projection = _parse_projection(lines.next())
+    projection = _parse_projection(next(lines))
     points = [_read_gcp_list_line(line, projection, reference_lla, exif)
               for line in lines]
+
+    while [] in points:  # Tomer
+        points.remove([])
+
     return points
 
 
@@ -572,7 +583,12 @@ def imread(filename):
                 "version 3.2 or newer.".format(cv2.__version__))
     else:
         flags = cv2.CV_LOAD_IMAGE_COLOR
+
     bgr = cv2.imread(filename, flags)
+
+    if bgr is None:
+        raise IOError("Unable to load image {}".format(filename))
+
     return bgr[:, :, ::-1]  # Turn BGR to RGB
 
 
@@ -806,16 +822,16 @@ def reconstruction_to_ply(reconstruction, no_cameras=False, no_points=False):
                     vertices.append(s)
 
     header = [
-        u"ply",
-        u"format ascii 1.0",
-        u"element vertex {}".format(len(vertices)),
-        u"property float x",
-        u"property float y",
-        u"property float z",
-        u"property uchar diffuse_red",
-        u"property uchar diffuse_green",
-        u"property uchar diffuse_blue",
-        u"end_header",
+        "ply",
+        "format ascii 1.0",
+        "element vertex {}".format(len(vertices)),
+        "property float x",
+        "property float y",
+        "property float z",
+        "property uchar diffuse_red",
+        "property uchar diffuse_green",
+        "property uchar diffuse_blue",
+        "end_header",
     ]
 
     return '\n'.join(header + vertices + [''])

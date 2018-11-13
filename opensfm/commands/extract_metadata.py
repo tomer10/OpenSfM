@@ -4,11 +4,29 @@ import time
 
 from opensfm import dataset
 from opensfm import exif
+from opensfm import io
 
 
 logger = logging.getLogger(__name__)
 logging.getLogger("exifread").setLevel(logging.WARNING)
 
+def set_halocam():  # Tomer 12112018
+    camera_models={'halocam': {
+                    "focal_prior": 0.703,
+                    "width": 1280,
+                    "k1": -0.07968653,
+                    "k2": 0.04939453,
+                    "k3": -0.17906329,
+                    "k4": 0.25248048,
+                    "k1_prior": -0.07968653,
+                    "k2_prior": 0.04939453,
+                    "k3_prior": -0.17906329,
+                    "k4_prior": 0.25248048,
+                    "projection_type": "fisheye",
+                    "focal": 0.703,
+                    "height": 720
+                    }}
+    return camera_models
 
 class Command:
     name = 'extract_metadata'
@@ -25,11 +43,14 @@ class Command:
         if data.exif_overrides_exists():
             exif_overrides = data.load_exif_overrides()
 
-        camera_models = {}
+        camera_models =  io.cameras_from_json(set_halocam())
         for image in data.images():
             if data.exif_exists(image):
                 logging.info('Loading existing EXIF for {}'.format(image))
                 d = data.load_exif(image)
+                # if 'force_camera_type' in data.config:  # TomerPatch - add config to overider camera in exif og .jpg
+                #     # data.config['force_camera_type']:
+                #     d['camera'] = data.config['force_camera_type']
             else:
                 logging.info('Extracting EXIF for {}'.format(image))
                 d = self._extract_exif(image, data)
@@ -61,11 +82,11 @@ class Command:
 
     def _extract_exif(self, image, data):
          # EXIF data in Image
-        d = exif.extract_exif_from_file(data.load_image(image))
+        d = exif.extract_exif_from_file(data.open_image_file(image))
 
         # Image Height and Image Width
         if d['width'] <= 0 or not data.config['use_exif_size']:
-            d['height'], d['width'] = data.image_as_array(image).shape[:2]
+            d['height'], d['width'] = data.load_image(image).shape[:2]
 
         d['camera'] = exif.camera_id(d)
 

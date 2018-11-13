@@ -8,6 +8,9 @@ from opensfm import dataset
 from opensfm import geo
 from opensfm import io
 
+# USAGE EXAMPLE:
+#     opensfm  export_geocoords --proj  "+proj=latlon +zone=33  +ellps=WGS84" --image-positions data/sf11_noiseint
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,7 +72,20 @@ class Command:
             reconstructions = data.load_reconstruction()
             output = args.output or 'image_geocoords.tsv'
             output_path = os.path.join(data.data_path, output)
-            self._transform_image_positions(reconstructions, transformation,
+
+            # ======== PATCH Tomer =============
+            if reference['latitude']==0. and reference['longitude']==0.:  # tomer
+                should_avoid_transform=True
+            else:
+                should_avoid_transform=False
+
+            if should_avoid_transform:
+                ref = [reference['latitude'],reference['longitude'],reference['altitude']]
+                self._transform_image_positions_nogps(reconstructions, transformation,  # tomer
+                                            output_path, ref)
+            else:
+                # ============================
+                self._transform_image_positions(reconstructions, transformation,
                                             output_path)
 
         if args.reconstruction:
@@ -106,24 +122,57 @@ class Command:
                 fout.write(u' '.join(map(str, row)))
                 fout.write(u'\n')
 
+    # def _transform(self, point, reference, projection):
+    #     """Transform on point from local coords to a proj4 projection."""
+    #     lat, lon, altitude = geo.lla_from_topocentric(
+    #         point[0], point[1], point[2],
+    #         reference['latitude'], reference['longitude'], reference['altitude'])
+    #     easting, northing = projection(lon, lat) # ,radians=True) Tomer
+    #     return [easting, northing, altitude]
+
+
+#Tomer - skip projection from Lat/Lon to escape deg2rad
     def _transform(self, point, reference, projection):
         """Transform on point from local coords to a proj4 projection."""
         lat, lon, altitude = geo.lla_from_topocentric(
             point[0], point[1], point[2],
             reference['latitude'], reference['longitude'], reference['altitude'])
-        easting, northing = projection(lon, lat)
-        return [easting, northing, altitude]
+        easting, northing = [lon, lat]  #Tomer   projection(lon, lat) # ,radians=True) Tomer
+        return [northing, easting, altitude]
+
+
 
     def _transform_image_positions(self, reconstructions, transformation, output):
         A, b = transformation[:3, :3], transformation[:3, 3]
 
-        rows = ['Image\tX\tY\tZ']
+        rows = ['Image,X,Y,Z']
+        # rows = ['Image\tX\tY\tZ']  # tomer
         for r in reconstructions:
             for shot in r.shots.values():
                 o = shot.pose.get_origin()
                 to = np.dot(A, o) + b
                 row = [shot.id, to[0], to[1], to[2]]
-                rows.append('\t'.join(map(str, row)))
+                rows.append(','.join(map(str, row)))
+                # rows.append('\t'.join(map(str, row)))
+
+        text = '\n'.join(rows + [''])
+        with open(output, 'w') as fout:
+            fout.write(text)
+
+    def _transform_image_positions_nogps(self, reconstructions, transformation, output, ref):
+        A, b = transformation[:3, :3], transformation[:3, 3]
+
+        rows = ['Image,X,Y,Z']
+        # rows = ['Image\tX\tY\tZ']  # tomer
+        for r in reconstructions:
+            for shot in r.shots.values():
+                o = shot.pose.get_origin()
+                to = geo.lla_from_topocentric(o[0], o[1], o[2], ref[0], ref[1], ref[2])  # tomer  ToDO   replace 0,0,0 with ref
+
+                # to = np.dot(A, o) + b
+                row = [shot.id, to[0], to[1], to[2]]
+                rows.append(','.join(map(str, row)))
+                # rows.append('\t'.join(map(str, row)))
 
         text = '\n'.join(rows + [''])
         with open(output, 'w') as fout:

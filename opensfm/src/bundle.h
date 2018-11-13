@@ -15,7 +15,6 @@ extern "C" {
 #include "ceres/covariance.h"
 
 
-
 enum BACameraType {
   BA_PERSPECTIVE_CAMERA,
   BA_BROWN_PERSPECTIVE_CAMERA,
@@ -27,6 +26,7 @@ struct BACamera {
   std::string id;
   bool constant;
 
+  virtual ~BACamera() {}
   virtual BACameraType type() = 0;
 };
 
@@ -1412,22 +1412,29 @@ class BundleAdjuster {
   }
 
   void ComputeCovariances(ceres::Problem *problem) {
-    ceres::Covariance::Options options;
-    ceres::Covariance covariance(options);
+    bool computed = false;
 
-    std::vector<std::pair<const double*, const double*> > covariance_blocks;
-    for (auto &i : shots_) {
-      covariance_blocks.push_back(std::make_pair(i.second.parameters, i.second.parameters));
+    if (last_run_summary_.termination_type != ceres::FAILURE) {
+      ceres::Covariance::Options options;
+      ceres::Covariance covariance(options);
+
+      std::vector<std::pair<const double*, const double*> > covariance_blocks;
+      for (auto &i : shots_) {
+        covariance_blocks.push_back(std::make_pair(i.second.parameters, i.second.parameters));
+      }
+
+      bool worked = covariance.Compute(covariance_blocks, problem);
+
+      if (worked) {
+        for (auto &i : shots_) {
+          covariance_estimation_valid_ = true;
+          covariance.GetCovarianceBlock(i.second.parameters, i.second.parameters, i.second.covariance);
+        }
+        computed = true;
+      }
     }
 
-    bool worked = covariance.Compute(covariance_blocks, problem);
-
-    if (worked) {
-      for (auto &i : shots_) {
-        covariance_estimation_valid_ = true;
-        covariance.GetCovarianceBlock(i.second.parameters, i.second.parameters, i.second.covariance);
-      }
-    } else { // If covariance estimation failed, use a default value
+    if (!computed) { // If covariance estimation failed, use a default value
       for (auto &i : shots_) {
         covariance_estimation_valid_ = false;
         for (int k = 0; k < 6 * 6; ++k) {

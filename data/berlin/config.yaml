@@ -6,3 +6,9 @@ processes: 8                  # Number of threads to use
 depthmap_min_consistent_views: 2      # Min number of views that should reconstruct a point for it to be valid
 depthmap_save_debug_files: yes        # Save debug files with partial reconstruction results
 feature_process_size: 1024
+align_method: naive       # orientation_prior or naive
+align_orientation_prior: horizontal   # horizontal, vertical or no_roll
+
+
+bundle_use_gcp: yes
+bundle_use_gps: yes
