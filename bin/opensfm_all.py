@@ -7,6 +7,7 @@
 # --- view ---
 # python -m SimpleHTTPServer
 # http://localhost:8000/viewer/reconstruction.html#file=/data/lv/reconstruction.meshed.json
+# http://localhost:8000/viewer/reconstruction.html#file=/data/lv_gps/reconstruction.meshed.json
 
 # ToDO:
 # add to requirements: matplotlib, pathlib

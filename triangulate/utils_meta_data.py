@@ -2,13 +2,27 @@
 
 import numpy as np
 import cv2 as cv2
-
+import glob
 import os.path as path
 import pathlib
+import math
 # from friction_Gis import meter_per_lat_lon as meter_per_lat_lon  # Utils.Gis.meter_per_lat_lon
 
+# conversions
+radian2degree = 180.0 / math.pi
+degree2radian = math.pi / 180.0
+meter_second_to_mile_hour = 2.236936292
+meter_second_to_kph = 3.6
+mile_hour_to_meter_second = 1 / meter_second_to_mile_hour
+mile_per_hour_to_kilometer_per_hour = 1.60934
+miles_to_meter = 1000 * mile_per_hour_to_kilometer_per_hour
+second_to_milli_second = 1000.0
+# acc_to_mph = standard_gravity * meter_second_to_mile_hour  # *dt in seconds
+pi2 = 2 * math.pi
+pi = math.pi
+
 def meter_per_lat_lon(lat):
-    lat0 = np.average(lat) * cs.degree2radian
+    lat0 = np.average(lat) * degree2radian  # cs.degree2radian
     # convert all to meters
     # https://en.wikipedia.org/wiki/Geographic_coordinate_system
     meter_per_deg_lat = abs(
@@ -66,7 +80,7 @@ def sample_video2jpg(file_video, path_im, ar_fr):
     return cam_params
 
 
-def get_file(base_path, name_template, should_expect1=False):
+def get_file0(base_path, name_template, should_expect1=False):
     file_name=path.join(base_path, name_template)
     ar_file = sorted(pathlib.Path(base_path).glob(name_template))
 
@@ -78,6 +92,29 @@ def get_file(base_path, name_template, should_expect1=False):
 
 
     return ar_file
+
+
+def get_file(base_path, name_template, should_expect1=False):
+    """
+    Get names of all bbox json files in a directory.
+
+    :param json_dir: Directory with json bbox files
+    :return: A (sorted) list of names of all image files in imega_dir
+    """
+    ar_template = [name_template]  # '/*.json', '/*.JSON')
+    ar_file = []
+    for type in ar_template:
+        ar_file.extend(glob.glob(path.join(base_path, type)))
+
+    if should_expect1:
+        if len(ar_file) > 1:
+            raise ValueError('more then one file found', 'name_template', ar_file[0], ar_file[1], '...')
+        else:
+            ar_file = ar_file[0]
+
+    return ar_file
+
+
 
 # -------- EXTRACT INCIDENT RELEVANT DATA ----
 def crop2incident(ar_data_raw, timestamp_raw):

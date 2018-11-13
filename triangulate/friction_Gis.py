@@ -1,6 +1,7 @@
 import abc
 import numpy as np
-import Common.Constants as cs
+# import Common.Constants as cs
+import math
 from geopy.distance import vincenty
 
 """
@@ -9,6 +10,22 @@ from geopy.distance import vincenty
     =====================
 
 """
+
+
+# conversions
+radian2degree = 180.0 / math.pi
+degree2radian = math.pi / 180.0
+meter_second_to_mile_hour = 2.236936292
+meter_second_to_kph = 3.6
+mile_hour_to_meter_second = 1 / meter_second_to_mile_hour
+mile_per_hour_to_kilometer_per_hour = 1.60934
+miles_to_meter = 1000 * mile_per_hour_to_kilometer_per_hour
+second_to_milli_second = 1000.0
+# acc_to_mph = standard_gravity * meter_second_to_mile_hour  # *dt in seconds
+pi2 = 2 * math.pi
+pi = math.pi
+
+
 
 
 
@@ -28,7 +45,7 @@ def google_print_locations(lat, lon, course=None):
 # https://www.google.com/maps?q&layer=c&cbll=40.7140929,-73.9967926&cbp=12,204.4,0,0,19&z=18
 
 def meter_per_lat_lon(lat):
-    lat0 = np.average(lat) * cs.degree2radian
+    lat0 = np.average(lat) * degree2radian  # cs.degree2radian
     # convert all to meters
     # https://en.wikipedia.org/wiki/Geographic_coordinate_system
     meter_per_deg_lat = abs(
